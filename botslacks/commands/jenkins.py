@@ -35,10 +35,12 @@ class Jenkins(object):
         self.auth = aiohttp.BasicAuth(username, password)
         self.http = aiohttp.ClientSession(auth=self.auth)
         self.jobs = {}
-        self.commands = {
+        self.subcommands = {
             'info': SubCommand('<project name>', 'displays project information.', self.info),
             'help': SubCommand('', 'displays this message.', self.help),
         }
+        self.argspec = '|'.join(self.subcommands.keys())
+    
     
 
     @asyncio.coroutine
@@ -79,11 +81,11 @@ class Jenkins(object):
                 return 'Found {} ({})'.format(job.name, job.url)
 
     def help(self, text):
-        return 'Available subcommands ' + help_message(self.commands)
+        return 'Available subcommands ' + help_message(self.subcommands)
         
     def process(self, text):
         command,args = parse_args(text)
-        subcommand = self.commands.get(command)
+        subcommand = self.subcommands.get(command)
         if subcommand:
             return subcommand.func(args)
 

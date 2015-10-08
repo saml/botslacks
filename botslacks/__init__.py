@@ -8,7 +8,10 @@ import websockets
 
 log = logging.getLogger(__name__)
 
-SubCommand = namedtuple('SubCommand', ['argspec', 'help', 'func'])
+SubCommand = namedtuple('SubCommand', ['argspec', 'help', 'func', 'subcommands'])
+SubCommand.__new__.__defaults__ = (None, None, None, None)
+
+
 
 def _find_widths(commands):
     command_width = 0
@@ -69,10 +72,10 @@ class SlackBot(object):
         self.bot_name = None
         self.command_handlers = {}
 
-    def register_command(self, command, func):
+    def register_command(self, command, func, argspec='', help_text='', subcommands=None):
         if command in self.command_handlers:
             raise SlackError('Already registered: {}'.format(command))
-        self.command_handlers[command] = func
+        self.command_handlers[command] = SubCommand('', help_text, func, subcommands)
 
     def _upsert_user(self, user):
         self.user_names[user['id']] = user['name']
@@ -145,10 +148,29 @@ class SlackBot(object):
     def _calculate_response(self, msg, response_id):
         input_text = msg['text']
         command,args = parse_args(input_text)
-        f = self.command_handlers.get(command)
-        if f is not None:
-            response_text = f(args)
+        subcommand = self.command_handlers.get(command)
+        if subcommand is not None:
+            response_text = subcommand.func(args)
             if response_text:
                 prefix = self._calculate_prefix(msg)
                 return {'id': response_id, 'type': 'message', 'channel': msg['channel'], 'text': prefix + response_text}
 
+    def help(self, text):
+        return help_message(self.command_handlers)
+
+
+# An example command
+class Help(object):
+    def __init__(self, bot):
+        self.commands = bot.command_handlers
+        self.argspec = '[any command]'
+
+
+    def __call__(self, text=''):
+        if text in self.commands:
+            command = text
+            c = self.commands[command]
+            if c.subcommands:
+                return help_message({'{} {}'.format(command, k):v for k,v in c.subcommands.items()})
+        log.info('asdf %s', text)
+        return help_message({'{} {}'.format(text, k):v for k,v in self.commands.items()})
