@@ -8,17 +8,73 @@ import websockets
 
 log = logging.getLogger(__name__)
 
-SubCommand = namedtuple('SubCommand', ['argspec', 'help', 'func', 'subcommands'])
-SubCommand.__new__.__defaults__ = (None, None, None, None)
 
+class BotCommand(object):
+    def __init__(self, func, description=None, argspec=None, key=None, subcommands=None):
+        '''
+        func is str -> str
+        subcommands is CommandDispatcher
+        '''
+        self.func = func
+        self.description = description
+        self.argspec = argspec
+        self.key = key
+        self.subcommands = subcommands
+
+    def __call__(self, input_text):
+        return self.func(input_text)
+
+
+class CommandDispatcher(object):
+    '''Can register new commands and dispatch.'''
+    def __init__(self):
+        self._commands = {}
+
+        # for display help
+        self.command_width = 0
+        self.argspec_width = 0
+
+    def register_command(self, key, func, argspec='', description='', subcommands=None):
+        if key in self._commands:
+            raise SlackError('Already registered: {}'.format(key))
+        self._commands[key] = BotCommand(func, key=key, description=description, argspec=argspec, subcommands=subcommands)
+        
+        command_length = len(key)
+        if command_length > self.command_width:
+            self.command_width = command_length
+        argspec_length = len(argspec)
+        if argspec_length > self.argspec_width:
+            self.argspec_width = argspec_length
+
+    def has(self, key):
+        return key in self._commands
+
+    def get(self, key):
+        return self._commands.get(key)
+
+    def __iter__(self):
+        '''iterate all registered commands'''
+        return self._commands.items()
+
+    def help(self, key=''):
+        texts = []
+
+        prefix = key + ' '
+        command_width = len(prefix) + self.command_width
+        for command in self._commands.values():
+            texts.append('{} {} {}'.format(
+                command.key.rjust(command_width),
+                command.argspec.rjust(self.argspec_width),
+                command.description))
+        return '\n'.join(texts)
 
 
 def _find_widths(commands):
     command_width = 0
     argspec_width = 0
-    for command,subcommand in commands.items():
-        command_length = len(command)
-        argspec_length = len(subcommand.argspec)
+    for key,command in commands:
+        command_length = len(key)
+        argspec_length = len(command.argspec)
         if command_length > command_width:
             command_width = command_length
         if argspec_length > argspec_width:
@@ -32,12 +88,11 @@ def help_message(commands):
     msg = []
     for command,subcommand in commands.items():
         msg.append('{} {} -- {}'.format(command.rjust(command_width), subcommand.argspec.rjust(argspec_width), subcommand.help))
-    return '''```{}```'''.format('\n'.join(msg))
+    return '\n'.join(msg)
 
-def configure_logging(log):
+def configure_logging(log_level=logging.INFO):
     '''default logging configuration'''
     if len(log.handlers) == 0:
-        log_level = logging.DEBUG
         formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
         handler = logging.StreamHandler()
         handler.setLevel(log_level)
@@ -70,12 +125,11 @@ class SlackBot(object):
         self.user_names = {}
         self.bot_id = None
         self.bot_name = None
-        self.command_handlers = {}
+        self.commands = CommandDispatcher()
 
-    def register_command(self, command, func, argspec='', help_text='', subcommands=None):
-        if command in self.command_handlers:
-            raise SlackError('Already registered: {}'.format(command))
-        self.command_handlers[command] = SubCommand('', help_text, func, subcommands)
+    def register_command(self, key, func, argspec='', description='', subcommands=None):
+        '''subcommands is CommandDispatcher'''
+        self.commands.register_command(key, func, argspec, description, subcommands)
 
     def _upsert_user(self, user):
         self.user_names[user['id']] = user['name']
@@ -147,30 +201,20 @@ class SlackBot(object):
 
     def _calculate_response(self, msg, response_id):
         input_text = msg['text']
-        command,args = parse_args(input_text)
-        subcommand = self.command_handlers.get(command)
-        if subcommand is not None:
-            response_text = subcommand.func(args)
+        key,args_text = parse_args(input_text)
+        command = self.commands.get(key)
+        if command is not None:
+            response_text = command(args_text)
             if response_text:
                 prefix = self._calculate_prefix(msg)
                 return {'id': response_id, 'type': 'message', 'channel': msg['channel'], 'text': prefix + response_text}
-
-    def help(self, text):
-        return help_message(self.command_handlers)
 
 
 # An example command
 class Help(object):
     def __init__(self, bot):
-        self.commands = bot.command_handlers
-        self.argspec = '[any command]'
-
+        self.commands = bot.commands
 
     def __call__(self, text=''):
-        if text in self.commands:
-            command = text
-            c = self.commands[command]
-            if c.subcommands:
-                return help_message({'{} {}'.format(command, k):v for k,v in c.subcommands.items()})
-        log.info('asdf %s', text)
-        return help_message({'{} {}'.format(text, k):v for k,v in self.commands.items()})
+        result = self.commands.help(text) if self.commands.has(text) else self.commands.help()
+        return '```{}```'.format(result)

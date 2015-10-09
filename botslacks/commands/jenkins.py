@@ -5,7 +5,7 @@ import operator
 
 import aiohttp
 
-from botslacks import log, parse_args, SubCommand, help_message
+from botslacks import log, parse_args, BotCommand, CommandDispatcher, help_message
 
 NON_WORD = re.compile(r'[\d\W]+')
 
@@ -35,11 +35,9 @@ class Jenkins(object):
         self.auth = aiohttp.BasicAuth(username, password)
         self.http = aiohttp.ClientSession(auth=self.auth)
         self.jobs = {}
-        self.subcommands = {
-            'info': SubCommand('<project name>', 'displays project information.', self.info),
-            'help': SubCommand('', 'displays this message.', self.help),
-        }
-        self.argspec = '|'.join(self.subcommands.keys())
+        self.commands = CommandDispatcher()
+        self.commands.register_command('info', self.info, argspec='<project name>', description='displays project information')
+        self.commands.register_command('help', self.help, description='displays this message.')
     
     
 
@@ -84,8 +82,8 @@ class Jenkins(object):
         return 'Available subcommands ' + help_message(self.subcommands)
         
     def process(self, text):
-        command,args = parse_args(text)
-        subcommand = self.subcommands.get(command)
+        key,args_text = parse_args(text)
+        subcommand = self.commands.get(key)
         if subcommand:
-            return subcommand.func(args)
+            return subcommand(args_text)
 

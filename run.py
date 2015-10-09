@@ -1,5 +1,6 @@
 import os
 import asyncio
+import logging
 
 from botslacks import SlackBot, log, configure_logging, Help
 from botslacks.commands.jenkins import Jenkins
@@ -12,7 +13,7 @@ def ping_command(text):
     return 'pong'
 
 if __name__ == '__main__':
-    configure_logging(log)
+    configure_logging(logging.INFO)
 
     
     j = Jenkins(
@@ -22,7 +23,7 @@ if __name__ == '__main__':
 
     bot.register_command('.ping', ping_command, '[pong]', 'checks if bot is alive.')
     bot.register_command('.jenkins', j.process, j.argspec, subcommands=j.subcommands) 
-    bot.register_command('.help', bot_help, bot_help.argspec, bot_help('.help'))
+    bot.register_command('.help', bot_help, '[command]', 'displays help')
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(j.init())
