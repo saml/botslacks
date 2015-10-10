@@ -15,14 +15,13 @@ def ping_command(text):
 if __name__ == '__main__':
     configure_logging(logging.INFO)
 
-    
     j = Jenkins(
             url=os.environ.get('JENKINS_URL'), 
             auth=(os.environ.get('JENKINS_USERNAME'), os.environ.get('JENKINS_TOKEN')))
     bot_help = Help(bot)
 
     bot.register_command('.ping', ping_command, '[pong]', 'checks if bot is alive.')
-    bot.register_command('.jenkins', j.process, j.argspec, subcommands=j.subcommands) 
+    bot.register_command('.jenkins', j.process, subcommands=j.commands) # supplying subcommans automatically calculates argspec
     bot.register_command('.help', bot_help, '[command]', 'displays help')
 
     loop = asyncio.get_event_loop()

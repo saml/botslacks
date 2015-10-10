@@ -5,7 +5,7 @@ import operator
 
 import aiohttp
 
-from botslacks import log, parse_args, BotCommand, CommandDispatcher, help_message
+from botslacks import log, parse_args, CommandDispatcher
 
 NON_WORD = re.compile(r'[\d\W]+')
 
@@ -18,7 +18,7 @@ def parse_jobs(jobs):
     for job in jobs:
         name = job['name']
         job_url = job['url']
-        key = NON_WORD.sub('', name.lower())
+        key = name #NON_WORD.sub('', name.lower())
         d[key] = JenkinsJob(name, job_url)
     return d
     
@@ -30,6 +30,9 @@ class Jenkins(object):
         url is jenkins base url.
         auth is (username,token).
         '''
+        assert url, 'needs url to jenkins'
+        assert auth, 'needs jenkins auth'
+
         self.url = url
         username,password = auth
         self.auth = aiohttp.BasicAuth(username, password)
@@ -37,8 +40,6 @@ class Jenkins(object):
         self.jobs = {}
         self.commands = CommandDispatcher()
         self.commands.register_command('info', self.info, argspec='<project name>', description='displays project information')
-        self.commands.register_command('help', self.help, description='displays this message.')
-    
     
 
     @asyncio.coroutine
@@ -78,9 +79,6 @@ class Jenkins(object):
             if job:
                 return 'Found {} ({})'.format(job.name, job.url)
 
-    def help(self, text):
-        return 'Available subcommands ' + help_message(self.subcommands)
-        
     def process(self, text):
         key,args_text = parse_args(text)
         subcommand = self.commands.get(key)

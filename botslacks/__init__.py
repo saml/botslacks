@@ -17,12 +17,14 @@ class BotCommand(object):
         '''
         self.func = func
         self.description = description
-        self.argspec = argspec
         self.key = key
         self.subcommands = subcommands
+        # automatically caclulate argspec from subcommands if argspec is not supplied.
+        self.argspec = '|'.join(subcommands.keys()) if subcommands and not argspec else argspec
 
     def __call__(self, input_text):
         return self.func(input_text)
+
 
 
 class CommandDispatcher(object):
@@ -52,43 +54,36 @@ class CommandDispatcher(object):
     def get(self, key):
         return self._commands.get(key)
 
+    def keys(self):
+        return self._commands.keys()
+
     def __iter__(self):
         '''iterate all registered commands'''
         return self._commands.items()
 
-    def help(self, key=''):
+    def help(self, parent_command=None):
         texts = []
 
-        prefix = key + ' '
-        command_width = len(prefix) + self.command_width
+        prefix = ''
+        argspec_width = self.argspec_width
+        command_width = self.command_width
+
+        if parent_command:
+            prefix = parent_command.key + ' '
+            argspec_width = max(len(parent_command.argspec), self.argspec_width)
+            command_width = len(prefix) + self.command_width
+
+            texts.append('{} {} {}'.format(
+                parent_command.key.rjust(command_width), 
+                parent_command.argspec.rjust(argspec_width),
+                parent_command.description))
+
         for command in self._commands.values():
             texts.append('{} {} {}'.format(
-                command.key.rjust(command_width),
-                command.argspec.rjust(self.argspec_width),
+                (prefix + command.key).rjust(command_width),
+                command.argspec.rjust(argspec_width),
                 command.description))
         return '\n'.join(texts)
-
-
-def _find_widths(commands):
-    command_width = 0
-    argspec_width = 0
-    for key,command in commands:
-        command_length = len(key)
-        argspec_length = len(command.argspec)
-        if command_length > command_width:
-            command_width = command_length
-        if argspec_length > argspec_width:
-            argspec_width = argspec_length
-
-    return command_width,argspec_width
-
-def help_message(commands):
-    '''Given dict of command (str) to SubCommand, returns help string.'''
-    command_width,argspec_width = _find_widths(commands)
-    msg = []
-    for command,subcommand in commands.items():
-        msg.append('{} {} -- {}'.format(command.rjust(command_width), subcommand.argspec.rjust(argspec_width), subcommand.help))
-    return '\n'.join(msg)
 
 def configure_logging(log_level=logging.INFO):
     '''default logging configuration'''
@@ -215,6 +210,17 @@ class Help(object):
     def __init__(self, bot):
         self.commands = bot.commands
 
+    def _help_text(self, command):
+        return '{} {} {}'.format(command.key, command.argspec, command.description)
+
     def __call__(self, text=''):
-        result = self.commands.help(text) if self.commands.has(text) else self.commands.help()
-        return '```{}```'.format(result)
+        command = self.commands.get(text)
+        help_text = ''
+        if command:
+            if command.subcommands:
+                help_text = command.subcommands.help(command)
+            else:
+                help_text = self._help_text(command)
+        else:
+            help_text = self.commands.help()
+        return '```{}```'.format(help_text)
